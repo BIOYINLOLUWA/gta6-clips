@@ -1,0 +1,38 @@
+# Sources the pipeline pulls from. Only add channels you have the right to clip:
+#  - streamers whose Whop campaign you joined (campaign terms grant clip rights)
+#  - your own gameplay uploads
+#  - official Rockstar trailers (commentary required)
+#
+# layout: "crop" = centre crop to 9:16 (best for pure gameplay)
+#         "blur" = full frame over blurred background (keeps facecams visible)
+# pre_launch_ok: allow this source before 19 Nov. Leave false for anything that
+#                could carry leaked GTA 6 footage.
+
+sources:
+  - name: Rockstar Games (official trailers)
+    url: https://www.youtube.com/@RockstarGames/videos
+    layout: blur
+    campaign: null
+    pre_launch_ok: true
+    official: true
+
+  # Example streamer campaign. Replace with the real ones you join on Whop.
+  # - name: ExampleStreamer
+  #   url: https://www.twitch.tv/examplestreamer/videos?filter=archives
+  #   layout: blur
+  #   campaign: "ExampleStreamer GTA 6 launch (Whop)"
+  #   pre_launch_ok: false
+
+  # Your own gameplay channel
+  # - name: My gameplay
+  #   url: https://www.youtube.com/@yourchannel/videos
+  #   layout: crop
+  #   campaign: null
+  #   pre_launch_ok: true
+
+settings:
+  lookback_hours: 48          # only consider uploads newer than this
+  max_source_hours: 8         # skip VODs longer than this
+  clips_per_source: 4         # best N moments per VOD
+  long_cut_s: 68              # TikTok cut (must be >60s for Creator Rewards)
+  short_cut_s: 40             # Shorts / Reels cut
