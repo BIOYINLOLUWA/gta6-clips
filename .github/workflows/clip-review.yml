@@ -1,0 +1,27 @@
+name: clip-review
+# Read your Telegram approvals -> schedule approved clips on TikTok / Shorts / Reels.
+on:
+  schedule:
+    - cron: "*/30 * * * *"
+  workflow_dispatch:
+
+concurrency: { group: clip-review, cancel-in-progress: false }
+
+jobs:
+  review:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    defaults: { run: { working-directory: clip-pipeline } }
+    env:
+      DATABASE_URL: ${{ secrets.DATABASE_URL }}
+      TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+      TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+      UPLOAD_POST_API_KEY: ${{ secrets.UPLOAD_POST_API_KEY }}
+      UPLOAD_POST_USER: ${{ secrets.UPLOAD_POST_USER }}
+      POST_TIMEZONE: Europe/London
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: { python-version: "3.12", cache: pip }
+      - run: pip install requests PyYAML "psycopg[binary]"
+      - run: python -m pipeline.cli review
