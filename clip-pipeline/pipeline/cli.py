@@ -43,7 +43,8 @@ def process_source(src: dict, wl: settings.Watchlist) -> int:
         db.q("UPDATE clip_sources SET status='processed', processed_at=now() WHERE id=%s", (src["id"],))
         return made
     except Exception as exc:
-        log.exception("source %s failed", src["id"])
+        log.error("source %s failed: %r", src["id"], exc)
+        log.exception("source %s traceback", src["id"])
         db.q("UPDATE clip_sources SET status='failed', block_reason=%s WHERE id=%s",
              (str(exc)[:500], src["id"]))
         return 0
@@ -53,6 +54,8 @@ def process_source(src: dict, wl: settings.Watchlist) -> int:
 
 def produce(max_sources: int) -> None:
     wl = settings.load_watchlist()
+    db.q("UPDATE clip_sources SET status='new', block_reason=NULL "
+         "WHERE status='failed' AND discovered_at > now() - interval '3 days'")
     queued = source.discover(wl)
     log.info("%d new sources allowed", queued)
     total = 0
