@@ -28,6 +28,14 @@ def _call(method: str, files=None, **params) -> dict:
     return body["result"]
 
 
+def _safe(method: str, **params) -> None:
+    """Best-effort Telegram call: a late button reply must never crash the review run."""
+    try:
+        _call(method, **params)
+    except Exception as exc:
+        log.warning("%s skipped: %s", method, exc)
+
+
 def review_text(clip: dict, source: dict) -> str:
     caps = clip["captions"] if isinstance(clip["captions"], list) else json.loads(clip["captions"])
     camp = source.get("campaign") or "own channel"
@@ -122,7 +130,7 @@ def poll() -> list[int]:
             continue
         clip = db.one("SELECT status FROM clips WHERE id=%s", (clip_id,))
         if not clip or clip["status"] != "pending_review":
-            _call("answerCallbackQuery", callback_query_id=cq["id"], text="Already handled")
+            _safe("answerCallbackQuery", callback_query_id=cq["id"], text="Already handled")
             continue
         if action == "approve":
             db.q("UPDATE clips SET status='approved', chosen_caption=%s, reviewed_at=now() WHERE id=%s",
@@ -132,8 +140,8 @@ def poll() -> list[int]:
         else:
             db.q("UPDATE clips SET status='rejected', reviewed_at=now() WHERE id=%s", (clip_id,))
             note = "Rejected"
-        _call("answerCallbackQuery", callback_query_id=cq["id"], text=note)
-        _call("editMessageReplyMarkup", chat_id=cq["message"]["chat"]["id"],
+        _safe("answerCallbackQuery", callback_query_id=cq["id"], text=note)
+        _safe("editMessageReplyMarkup", chat_id=cq["message"]["chat"]["id"],
               message_id=cq["message"]["message_id"], reply_markup={"inline_keyboard": []})
     db.kv_set("tg_offset", str(offset))
     return approved
