@@ -115,7 +115,8 @@ def schedule_clip(clip_id: int) -> dict:
 def schedule_approved() -> int:
     done = 0
     # Clips that failed only because TikTok is not on the Upload-Post plan get another go (other platforms now still post).
-    db.q("UPDATE clips SET status='approved', error=NULL WHERE status='failed' AND error LIKE 'Upload-Post tiktok 403%'")
+    db.q("UPDATE clips SET status='approved', error=NULL WHERE status='failed' AND error LIKE %s",
+         ("Upload-Post tiktok 403%",))
     for row in db.q("SELECT id FROM clips WHERE status='approved' ORDER BY score DESC"):
         try:
             when = schedule_clip(row["id"])
