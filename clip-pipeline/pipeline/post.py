@@ -94,11 +94,19 @@ def schedule_clip(clip_id: int) -> dict:
         "youtube": (short_v, youtube_title(caption), caption + credit),
         "instagram": (short_v, caption + credit, ""),
     }
-    when, responses = {}, {}
+    when, responses, errors = {}, {}, {}
     for platform, (video, title, desc) in plan.items():
-        slot = next_slot(platform, taken_slots(platform, tz), now, tz)
-        responses[platform] = upload(video, platform, title, slot, desc)
-        when[platform] = slot.isoformat()
+        try:
+            slot = next_slot(platform, taken_slots(platform, tz), now, tz)
+            responses[platform] = upload(video, platform, title, slot, desc)
+            when[platform] = slot.isoformat()
+        except Exception as exc:  # one platform failing (plan limit, expired login) must not block the others
+            errors[platform] = str(exc)[:300]
+            log.warning("clip %s: %s failed: %s", clip_id, platform, exc)
+    if not when:
+        raise RuntimeError("all platforms failed: " + "; ".join(f"{p}: {e}" for p, e in errors.items()))
+    if errors:
+        approve.notify(f"⚠️ Clip #{clip_id}: " + "; ".join(f"{p} failed ({e[:120]})" for p, e in errors.items()))
     db.q("UPDATE clips SET status='scheduled', scheduled_for=%s, post_response=%s WHERE id=%s",
          (db.as_json(when), db.as_json(responses), clip_id))
     return when
@@ -106,6 +114,8 @@ def schedule_clip(clip_id: int) -> dict:
 
 def schedule_approved() -> int:
     done = 0
+    # Clips that failed only because TikTok is not on the Upload-Post plan get another go (other platforms now still post).
+    db.q("UPDATE clips SET status='approved', error=NULL WHERE status='failed' AND error LIKE 'Upload-Post tiktok 403%'")
     for row in db.q("SELECT id FROM clips WHERE status='approved' ORDER BY score DESC"):
         try:
             when = schedule_clip(row["id"])
