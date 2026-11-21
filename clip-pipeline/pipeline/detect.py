@@ -80,13 +80,17 @@ def transcribe(audio: Path, start: float | None = None, end: float | None = None
 
     if _whisper is None:
         _whisper = WhisperModel(settings.WHISPER_MODEL, device="cpu", compute_type="int8")
-    src, offset = audio, 0.0
+    offset = start or 0.0
+    cmd = ["ffmpeg", "-nostdin", "-loglevel", "error"]
     if start is not None:
-        src = audio.with_name(f"win_{int(start)}.wav")
-        subprocess.run(["ffmpeg", "-y", "-loglevel", "error", "-ss", str(start), "-to", str(end),
-                        "-i", str(audio), "-ac", "1", "-ar", "16000", str(src)], check=True)
-        offset = start
-    segs, _ = _whisper.transcribe(str(src), word_timestamps=words, vad_filter=True)
+        cmd += ["-ss", str(start), "-to", str(end)]
+    cmd += ["-i", str(audio), "-f", "f32le", "-ac", "1", "-ar", "16000", "-"]
+    import numpy as np
+    proc = subprocess.run(cmd, capture_output=True)
+    if proc.returncode != 0:
+        raise RuntimeError("ffmpeg decode failed: " + proc.stderr.decode(errors="replace")[:300])
+    pcm = np.frombuffer(proc.stdout, dtype=np.float32)
+    segs, _ = _whisper.transcribe(pcm, word_timestamps=words, vad_filter=True)
     out = []
     for s in segs:
         if words:
