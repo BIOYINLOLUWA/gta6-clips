@@ -1,0 +1,37 @@
+name: clip-produce-pc
+# Same as clip-produce, but runs on your own PC (home internet) because YouTube blocks GitHub's servers.
+on:
+  schedule:
+    - cron: "15 */4 * * *"
+  workflow_dispatch:
+    inputs:
+      max_sources:
+        description: "Max sources to process this run"
+        default: "3"
+
+concurrency: { group: clip-produce-pc, cancel-in-progress: false }
+
+jobs:
+  produce:
+    runs-on: [self-hosted, windows]
+    timeout-minutes: 180
+    defaults:
+      run:
+        shell: bash
+        working-directory: clip-pipeline
+    env:
+      DATABASE_URL: ${{ secrets.DATABASE_URL }}
+      TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+      TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+      ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+      WHISPER_MODEL: base
+    steps:
+      - uses: actions/checkout@v4
+      - name: Python environment and font
+        run: |
+          [ -x ../../.clipvenv/Scripts/python.exe ] || python -m venv ../../.clipvenv
+          ../../.clipvenv/Scripts/python.exe -m pip install -q -r requirements.txt
+          mkdir -p fonts
+          curl -sSL -o fonts/BebasNeue-Regular.ttf https://github.com/google/fonts/raw/main/ofl/bebasneue/BebasNeue-Regular.ttf
+      - name: Produce clips
+        run: ../../.clipvenv/Scripts/python.exe -m pipeline.cli produce --max-sources ${{ inputs.max_sources || '3' }}
