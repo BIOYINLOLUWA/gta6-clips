@@ -39,6 +39,7 @@ def review_text(clip: dict, source: dict) -> str:
         "",
         *[f"{i + 1}. {c}" for i, c in enumerate(caps)],
         "",
+        "✏️ To use your own caption: reply to this video with your text, then tap ✅ 1.",
         "Check: no leaks, no cutscene/story spoilers, no graphic first 7s.",
     ]
     return "\n".join(lines)[:1024]
@@ -78,13 +79,40 @@ def parse_callback(data: str) -> tuple[str, int, int | None]:
     raise ValueError(f"bad callback data: {data}")
 
 
+def apply_caption_reply(msg: dict) -> bool:
+    """A text reply to a clip's video replaces caption 1 with the user's own words."""
+    text = (msg.get("text") or "").strip()
+    reply = msg.get("reply_to_message")
+    if not text or not reply:
+        return False
+    clip = db.one("SELECT * FROM clips WHERE tg_message_id=%s", (reply["message_id"],))
+    if not clip or clip["status"] != "pending_review":
+        return False
+    caps = clip["captions"] if isinstance(clip["captions"], list) else json.loads(clip["captions"])
+    clip["captions"] = [text[:2200]] + list(caps)[:2]
+    db.q("UPDATE clips SET captions=%s WHERE id=%s", (db.as_json(clip["captions"]), clip["id"]))
+    source = db.one("SELECT * FROM clip_sources WHERE id=%s", (clip["source_id"],))
+    try:
+        _call("editMessageCaption", chat_id=settings.TELEGRAM_CHAT_ID, message_id=clip["tg_message_id"],
+              caption=review_text(clip, source), reply_markup=keyboard(clip["id"]))
+    except Exception as exc:  # Telegram refuses an edit that changes nothing
+        log.warning("caption refresh failed: %s", exc)
+    _call("sendMessage", chat_id=settings.TELEGRAM_CHAT_ID, reply_parameters={"message_id": msg["message_id"]},
+          text=f"✏️ Caption 1 for clip #{clip['id']} is now your text. Tap ✅ 1 to approve.")
+    return True
+
+
 def poll() -> list[int]:
     """Process button presses since last run. Returns ids of newly approved clips."""
     offset = int(db.kv_get("tg_offset", "0"))
-    updates = _call("getUpdates", offset=offset, timeout=0, allowed_updates=["callback_query"])
+    updates = _call("getUpdates", offset=offset, timeout=0, allowed_updates=["callback_query", "message"])
     approved = []
     for u in updates:
         offset = max(offset, u["update_id"] + 1)
+        msg = u.get("message")
+        if msg and str(msg["chat"]["id"]) == str(settings.TELEGRAM_CHAT_ID):
+            apply_caption_reply(msg)
+            continue
         cq = u.get("callback_query")
         if not cq or str(cq["message"]["chat"]["id"]) != str(settings.TELEGRAM_CHAT_ID):
             continue
