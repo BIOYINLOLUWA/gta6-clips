@@ -73,6 +73,11 @@ def review() -> None:
     log.info("%d clips scheduled", n)
 
 
+def hot() -> None:
+    from . import hot as hot_mod
+    hot_mod.run()
+
+
 def status() -> None:
     for r in db.q("SELECT status, count(*) AS n FROM clips GROUP BY status ORDER BY status"):
         print(f"clips {r['status']:>15}: {r['n']}")
@@ -89,8 +94,9 @@ def main() -> None:
     pr.add_argument("--max-sources", type=int, default=3)
     sub.add_parser("review")
     sub.add_parser("status")
+    sub.add_parser("hot")
     a = p.parse_args()
-    {"init-db": init_db, "review": review, "status": status,
+    {"init-db": init_db, "review": review, "status": status, "hot": hot,
      "produce": lambda: produce(a.max_sources)}[a.cmd]()
 
 
