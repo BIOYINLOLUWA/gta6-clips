@@ -16,6 +16,19 @@ sources:
     pre_launch_ok: true
     official: true
 
+  # Streamer campaigns (Whop Content Rewards). Only clips you approve in Telegram get posted.
+  - name: Dylan Page
+    url: https://www.youtube.com/channel/UCzPpbeK8ANcNKg5aoMB0miw/streams
+    layout: blur
+    campaign: "Dylan Page GTA VI Marathon (NewsDaddy, Whop). Needs #DylanPage and Dylan visible"
+    pre_launch_ok: false
+
+  - name: Kai Cenat
+    url: https://www.twitch.tv/kaicenat/videos?filter=archives
+    layout: blur
+    campaign: "Kai Cenat GTA 6 pool (Clipped & Shipped, Whop)"
+    pre_launch_ok: false
+
   # Example streamer campaign. Replace with the real ones you join on Whop.
   # - name: ExampleStreamer
   #   url: https://www.twitch.tv/examplestreamer/videos?filter=archives
@@ -31,8 +44,8 @@ sources:
   #   pre_launch_ok: true
 
 settings:
-  lookback_hours: 720         # only consider uploads newer than this (30 days for the first run)
-  max_source_hours: 8         # skip VODs longer than this
+  lookback_hours: 72           # only consider uploads newer than this
+  max_source_hours: 30        # skip VODs longer than this (marathons are long)
   clips_per_source: 4         # best N moments per VOD
   long_cut_s: 68              # TikTok cut (must be >60s for Creator Rewards)
   short_cut_s: 40             # Shorts / Reels cut
