@@ -33,8 +33,12 @@ def list_recent(src: settings.Source, lookback_hours: int) -> list[dict]:
             continue
         ts = e.get("timestamp") or e.get("release_timestamp")
         if ts is None:  # flat listings often omit dates; fetch the full entry
-            with _ydl({}) as y:
-                e = y.extract_info(url, download=False)
+            try:
+                with _ydl({}) as y:
+                    e = y.extract_info(url, download=False)
+            except Exception as exc:  # age-restricted or removed video: skip it, keep the rest
+                log.warning("skipping %s: %s", url, str(exc)[:120])
+                continue
             ts = e.get("timestamp") or e.get("release_timestamp")
         if ts and ts < cutoff.timestamp():
             continue
