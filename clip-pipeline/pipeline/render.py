@@ -105,3 +105,48 @@ def render_pair(section: Path, words: list[dict], hook: str, layout: str,
     long_out = render(section, workdir / f"{name}_long.mp4", 0.0, long_end, words, hook, layout)
     short_out = render(section, workdir / f"{name}_short.mp4", s0, s1, words, hook, layout)
     return long_out, short_out
+
+
+FONT_URL = "https://raw.githubusercontent.com/google/fonts/main/ofl/bebasneue/BebasNeue-Regular.ttf"
+
+
+def _ensure_font() -> None:
+    f = settings.FONTS_DIR / "BebasNeue-Regular.ttf"
+    if any(settings.FONTS_DIR.glob("*.ttf")) if settings.FONTS_DIR.exists() else False:
+        return
+    try:
+        import urllib.request
+        settings.FONTS_DIR.mkdir(parents=True, exist_ok=True)
+        urllib.request.urlretrieve(FONT_URL, f)
+    except Exception:
+        pass  # libass falls back to a default font
+
+
+def screen_text(caption: str, limit: int = 70) -> str:
+    """Caption as on-screen hook: first line, hashtags removed, trimmed."""
+    import re
+    first = caption.strip().splitlines()[0] if caption.strip() else ""
+    txt = re.sub(r"#\w+", "", first).strip()
+    txt = re.sub(r"\s+", " ", txt)
+    if len(txt) > limit:
+        txt = txt[:limit].rsplit(" ", 1)[0] + "..."
+    return txt
+
+
+def burn_caption(video: Path, out: Path, caption: str, seconds: float = 4.0) -> Path:
+    """Overlay the chosen caption where the old hook sat (top, first few seconds)."""
+    text = screen_text(caption)
+    if not text:
+        return video
+    _ensure_font()
+    ass_path = out.with_suffix(".ass")
+    ass_path.write_text(build_ass([], "", 0, 0) + f"Dialogue: 1,{_ts(0)},{_ts(seconds)},Hook,,0,0,0,,{_esc(text.upper())}\n",
+        encoding="utf-8")
+    ass = str(ass_path).replace("\\", "/").replace(":", r"\:").replace("'", r"\'")
+    fonts = str(settings.FONTS_DIR).replace("\\", "/").replace(":", r"\:")
+    subprocess.run([
+        "ffmpeg", "-y", "-loglevel", "error", "-i", str(video),
+        "-vf", f"subtitles='{ass}':fontsdir='{fonts}'",
+        "-c:v", "libx264", "-preset", "veryfast", "-crf", "22", "-pix_fmt", "yuv420p",
+        "-c:a", "copy", "-movflags", "+faststart", str(out)], check=True)
+    return out

@@ -14,7 +14,7 @@ from zoneinfo import ZoneInfo
 
 import requests
 
-from . import approve, db, leak_guard, settings
+from . import approve, db, leak_guard, render, settings
 
 log = logging.getLogger(__name__)
 UPLOAD_URL = "https://api.upload-post.com/api/upload"
@@ -87,6 +87,12 @@ def schedule_clip(clip_id: int) -> dict:
     work = settings.WORK_DIR / f"post_{clip_id}"
     long_v = approve.download(clip["tg_long_file_id"], work / "long.mp4")
     short_v = approve.download(clip["tg_short_file_id"], work / "short.mp4")
+    if not (clip["hook"] or "").strip():  # new clips: caption is the on-screen hook
+        try:
+            long_v = render.burn_caption(long_v, work / "long_cap.mp4", caption)
+            short_v = render.burn_caption(short_v, work / "short_cap.mp4", caption)
+        except Exception as e:  # never block posting over the overlay
+            log.warning("caption overlay failed for clip %s: %r", clip_id, e)
 
     credit = f"\nClip from {source['channel']}" if source.get("campaign") else ""
     plan = {
@@ -94,19 +100,11 @@ def schedule_clip(clip_id: int) -> dict:
         "youtube": (short_v, youtube_title(caption), caption + credit),
         "instagram": (short_v, caption + credit, ""),
     }
-    when, responses, errors = {}, {}, {}
+    when, responses = {}, {}
     for platform, (video, title, desc) in plan.items():
-        try:
-            slot = next_slot(platform, taken_slots(platform, tz), now, tz)
-            responses[platform] = upload(video, platform, title, slot, desc)
-            when[platform] = slot.isoformat()
-        except Exception as exc:  # one platform failing (plan limit, expired login) must not block the others
-            errors[platform] = str(exc)[:300]
-            log.warning("clip %s: %s failed: %s", clip_id, platform, exc)
-    if not when:
-        raise RuntimeError("all platforms failed: " + "; ".join(f"{p}: {e}" for p, e in errors.items()))
-    if errors:
-        approve.notify(f"⚠️ Clip #{clip_id}: " + "; ".join(f"{p} failed ({e[:120]})" for p, e in errors.items()))
+        slot = next_slot(platform, taken_slots(platform, tz), now, tz)
+        responses[platform] = upload(video, platform, title, slot, desc)
+        when[platform] = slot.isoformat()
     db.q("UPDATE clips SET status='scheduled', scheduled_for=%s, post_response=%s WHERE id=%s",
          (db.as_json(when), db.as_json(responses), clip_id))
     return when
@@ -114,9 +112,6 @@ def schedule_clip(clip_id: int) -> dict:
 
 def schedule_approved() -> int:
     done = 0
-    # Clips that failed only because TikTok is not on the Upload-Post plan get another go (other platforms now still post).
-    db.q("UPDATE clips SET status='approved', error=NULL WHERE status='failed' AND error LIKE %s",
-         ("Upload-Post tiktok 403%",))
     for row in db.q("SELECT id FROM clips WHERE status='approved' ORDER BY score DESC"):
         try:
             when = schedule_clip(row["id"])

@@ -32,12 +32,12 @@ def process_source(src: dict, wl: settings.Watchlist) -> int:
         for i, m in enumerate(moments):
             section = source.download_section(src["url"], m.start, m.end, work, f"sec{i}")
             words = detect.transcribe(section, words=True)
-            long_v, short_v = render.render_pair(section, words, m.hook, src["layout"],
+            long_v, short_v = render.render_pair(section, words, "", src["layout"],
                                                  wl.long_cut_s, wl.short_cut_s, work, f"clip{i}")
             row = db.one(
                 "INSERT INTO clips(source_id, start_s, end_s, score, transcript, hook, captions) "
                 "VALUES (%s,%s,%s,%s,%s,%s,%s) RETURNING id",
-                (src["id"], m.start, m.end, m.score, m.transcript, m.hook, db.as_json(m.captions)))
+                (src["id"], m.start, m.end, m.score, m.transcript, "", db.as_json(m.captions)))
             approve.send_for_review(row["id"], long_v, short_v)
             made += 1
         db.q("UPDATE clip_sources SET status='processed', processed_at=now() WHERE id=%s", (src["id"],))

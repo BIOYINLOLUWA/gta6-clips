@@ -28,14 +28,6 @@ def _call(method: str, files=None, **params) -> dict:
     return body["result"]
 
 
-def _safe(method: str, **params) -> None:
-    """Best-effort Telegram call: a late button reply must never crash the review run."""
-    try:
-        _call(method, **params)
-    except Exception as exc:
-        log.warning("%s skipped: %s", method, exc)
-
-
 def review_text(clip: dict, source: dict) -> str:
     caps = clip["captions"] if isinstance(clip["captions"], list) else json.loads(clip["captions"])
     camp = source.get("campaign") or "own channel"
@@ -43,11 +35,10 @@ def review_text(clip: dict, source: dict) -> str:
         f"🎬 Clip #{clip['id']}  |  score {clip['score']:.1f}",
         f"📺 {source['channel']}: {source['title'][:80]}",
         f"💰 Campaign: {camp}",
-        f"🪝 Hook: {clip['hook']}",
         "",
         *[f"{i + 1}. {c}" for i, c in enumerate(caps)],
         "",
-        "✏️ To use your own caption: reply to this video with your text, then tap ✅ 1.",
+        "✏️ Your own caption: reply to this video with your text, then tap ✅ 1. (Your caption shows on screen for the first 4s.)",
         "Check: no leaks, no cutscene/story spoilers, no graphic first 7s.",
     ]
     return "\n".join(lines)[:1024]
@@ -130,7 +121,7 @@ def poll() -> list[int]:
             continue
         clip = db.one("SELECT status FROM clips WHERE id=%s", (clip_id,))
         if not clip or clip["status"] != "pending_review":
-            _safe("answerCallbackQuery", callback_query_id=cq["id"], text="Already handled")
+            _call("answerCallbackQuery", callback_query_id=cq["id"], text="Already handled")
             continue
         if action == "approve":
             db.q("UPDATE clips SET status='approved', chosen_caption=%s, reviewed_at=now() WHERE id=%s",
@@ -140,8 +131,8 @@ def poll() -> list[int]:
         else:
             db.q("UPDATE clips SET status='rejected', reviewed_at=now() WHERE id=%s", (clip_id,))
             note = "Rejected"
-        _safe("answerCallbackQuery", callback_query_id=cq["id"], text=note)
-        _safe("editMessageReplyMarkup", chat_id=cq["message"]["chat"]["id"],
+        _call("answerCallbackQuery", callback_query_id=cq["id"], text=note)
+        _call("editMessageReplyMarkup", chat_id=cq["message"]["chat"]["id"],
               message_id=cq["message"]["message_id"], reply_markup={"inline_keyboard": []})
     db.kv_set("tg_offset", str(offset))
     return approved
