@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import json
 import logging
+import os
 from datetime import datetime, timedelta
 from pathlib import Path
 from zoneinfo import ZoneInfo
@@ -101,6 +102,13 @@ def schedule_clip(clip_id: int) -> dict:
         "instagram": (short_v, caption + credit, ""),
     }
     when, responses, errors = {}, {}, {}
+    if os.environ.get("TIKTOK_MANUAL", "1") == "1":
+        plan.pop("tiktok")  # posted by hand: file + caption go to Telegram instead
+        try:
+            approve.send_tiktok_manual(clip_id, long_v, caption)
+        except Exception as exc:
+            log.warning("clip %s: TikTok manual send failed: %s", clip_id, exc)
+            errors["tiktok"] = f"manual send failed: {str(exc)[:120]}"
     for platform, (video, title, desc) in plan.items():
         try:
             slot = next_slot(platform, taken_slots(platform, tz), now, tz)

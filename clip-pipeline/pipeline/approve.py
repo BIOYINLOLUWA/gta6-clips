@@ -77,6 +77,15 @@ def send_for_review(clip_id: int, long_path: Path, short_path: Path) -> None:
          (msg["video"]["file_id"], short["video"]["file_id"], msg["message_id"], clip_id))
 
 
+def send_tiktok_manual(clip_id: int, video: Path, caption: str) -> None:
+    """Send the TikTok cut as a file (saves to phone at full quality) plus a copy-ready caption."""
+    with open(video, "rb") as f:
+        _call("sendDocument", files={"document": f}, chat_id=settings.TELEGRAM_CHAT_ID,
+              caption=f"🎵 TikTok clip #{clip_id}: save this file, then post it on TikTok.")
+    _call("sendMessage", chat_id=settings.TELEGRAM_CHAT_ID,
+          text=f"Caption for TikTok (clip #{clip_id}), copy this:\n\n{caption}"[:4000])
+
+
 def parse_callback(data: str) -> tuple[str, int, int | None]:
     parts = data.split(":")
     if parts[0] == "a" and len(parts) == 3:
