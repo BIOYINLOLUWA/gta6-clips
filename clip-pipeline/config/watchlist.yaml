@@ -17,16 +17,28 @@ sources:
     official: true
 
   # Streamer campaigns (Whop Content Rewards). Only clips you approve in Telegram get posted.
-  - name: Dylan Page
-    url: https://www.youtube.com/channel/UCzPpbeK8ANcNKg5aoMB0miw/streams
-    layout: blur
-    campaign: "Dylan Page GTA VI Marathon (NewsDaddy, Whop). Needs #DylanPage and Dylan visible"
-    pre_launch_ok: false
-
   - name: Kai Cenat
     url: https://www.twitch.tv/kaicenat/videos?filter=archives
     layout: blur
     campaign: "Kai Cenat GTA 6 pool (Clipped & Shipped, Whop)"
+    pre_launch_ok: false
+
+  - name: Lacy
+    url: https://www.twitch.tv/lacy/videos?filter=archives
+    layout: blur
+    campaign: "LACY GTA VI Marathon pool (Reach, Whop). Needs #Lacy"
+    pre_launch_ok: false
+
+  - name: Lauren Hamden
+    url: https://www.twitch.tv/laurenhamdenn/videos?filter=archives
+    layout: blur
+    campaign: "Lauren Hamden GTA 6 (Reach, Whop). Instagram only, dedicated account"
+    pre_launch_ok: false
+
+  - name: Dasgasd3m
+    url: https://kick.com/dasgasd3m/videos
+    layout: blur
+    campaign: "Dasgasd3m x RUCKUS (Whop). TikTok/YouTube only, credit kick.com/dasgasd3m, #dasgasdom3"
     pre_launch_ok: false
 
   # Example streamer campaign. Replace with the real ones you join on Whop.

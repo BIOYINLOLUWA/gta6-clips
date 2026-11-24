@@ -7,7 +7,9 @@ default:
 rules:
   - match: "Kai Cenat"
     hashtags: ["#KaiCenat"]
-  - match: "Dylan Page"
-    hashtags: ["#DylanPage"]
   - match: "Lauren Hamden"
     hashtags: ["#LaurenHamden"]
+  - match: "Lacy"
+    hashtags: ["#Lacy"]
+  - match: "Dasgasd3m"
+    hashtags: ["#dasgasdom3", "kick.com/dasgasd3m"]
