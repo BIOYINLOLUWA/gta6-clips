@@ -15,7 +15,7 @@ from zoneinfo import ZoneInfo
 
 import requests
 
-from . import approve, db, leak_guard, render, settings
+from . import approve, campaigns, db, leak_guard, render, settings
 
 log = logging.getLogger(__name__)
 UPLOAD_URL = "https://api.upload-post.com/api/upload"
@@ -76,7 +76,9 @@ def schedule_clip(clip_id: int) -> dict:
     clip = db.one("SELECT * FROM clips WHERE id=%s", (clip_id,))
     source = db.one("SELECT * FROM clip_sources WHERE id=%s", (clip["source_id"],))
     caps = clip["captions"] if isinstance(clip["captions"], list) else json.loads(clip["captions"])
-    caption = caps[(clip["chosen_caption"] or 1) - 1]
+    raw_caption = caps[(clip["chosen_caption"] or 1) - 1]
+    caption = campaigns.final_caption(raw_caption, source)  # disclosure first, campaign hashtags added
+    disclosure = campaigns.rules_for(source).get("disclosure", "")
 
     # Second leak check on what will actually be published.
     reason = leak_guard.check(f"{caption} {clip['hook']}", official=True, pre_launch_ok=True)
@@ -88,17 +90,19 @@ def schedule_clip(clip_id: int) -> dict:
     work = settings.WORK_DIR / f"post_{clip_id}"
     long_v = approve.download(clip["tg_long_file_id"], work / "long.mp4")
     short_v = approve.download(clip["tg_short_file_id"], work / "short.mp4")
-    if not (clip["hook"] or "").strip():  # new clips: caption is the on-screen hook
+    has_old_hook = bool((clip["hook"] or "").strip())  # old clips already have a hook baked in
+    screen = "" if has_old_hook else raw_caption       # new clips: caption is the on-screen hook
+    if screen or disclosure:
         try:
-            long_v = render.burn_caption(long_v, work / "long_cap.mp4", caption)
-            short_v = render.burn_caption(short_v, work / "short_cap.mp4", caption)
+            long_v = render.burn_caption(long_v, work / "long_cap.mp4", screen, disclosure=disclosure)
+            short_v = render.burn_caption(short_v, work / "short_cap.mp4", screen, disclosure=disclosure)
         except Exception as e:  # never block posting over the overlay
             log.warning("caption overlay failed for clip %s: %r", clip_id, e)
 
     credit = f"\nClip from {source['channel']}" if source.get("campaign") else ""
     plan = {
         "tiktok": (long_v, caption, ""),
-        "youtube": (short_v, youtube_title(caption), caption + credit),
+        "youtube": (short_v, youtube_title(raw_caption), caption + credit),
         "instagram": (short_v, caption + credit, ""),
     }
     when, responses, errors = {}, {}, {}

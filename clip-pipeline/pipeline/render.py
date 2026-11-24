@@ -133,15 +133,19 @@ def screen_text(caption: str, limit: int = 70) -> str:
     return txt
 
 
-def burn_caption(video: Path, out: Path, caption: str, seconds: float = 4.0) -> Path:
+def burn_caption(video: Path, out: Path, caption: str, seconds: float = 4.0, disclosure: str = "") -> Path:
     """Overlay the chosen caption where the old hook sat (top, first few seconds)."""
     text = screen_text(caption)
-    if not text:
+    if not text and not disclosure:
         return video
     _ensure_font()
     ass_path = out.with_suffix(".ass")
-    ass_path.write_text(build_ass([], "", 0, 0) + f"Dialogue: 1,{_ts(0)},{_ts(seconds)},Hook,,0,0,0,,{_esc(text.upper())}\n",
-        encoding="utf-8")
+    head = build_ass([], "", 0, 0).replace(
+        "\n[Events]", "\nStyle: Ad,Bebas Neue,64,&H00FFFFFF,&H00FFFFFF,&H00000000,&H64000000,0,0,0,0,100,100,2,0,1,5,2,8,60,60,130,1\n\n[Events]", 1)
+    body = f"Dialogue: 1,{_ts(0)},{_ts(seconds)},Hook,,0,0,0,,{_esc(text.upper())}\n"
+    if disclosure:
+        body += f"Dialogue: 2,{_ts(0)},{_ts(seconds)},Ad,,0,0,0,,{_esc(disclosure.upper())}\n"
+    ass_path.write_text(head + body, encoding="utf-8")
     ass = str(ass_path).replace("\\", "/").replace(":", r"\:").replace("'", r"\'")
     fonts = str(settings.FONTS_DIR).replace("\\", "/").replace(":", r"\:")
     subprocess.run([

@@ -1,0 +1,13 @@
+# Per-campaign caption rules, matched against the source name (case-insensitive substring).
+# hashtags: required by the campaign brief, appended to every caption for that source.
+# Add rules for LACY, Dom etc. once you have their required hashtag from the campaign page.
+default:
+  disclosure: "#ad"        # shown on screen at the start and put first in the caption
+
+rules:
+  - match: "Kai Cenat"
+    hashtags: ["#KaiCenat"]
+  - match: "Dylan Page"
+    hashtags: ["#DylanPage"]
+  - match: "Lauren Hamden"
+    hashtags: ["#LaurenHamden"]
