@@ -56,7 +56,7 @@ sources:
   #   pre_launch_ok: true
 
 settings:
-  lookback_hours: 72           # only consider uploads newer than this
+  lookback_hours: 24           # only consider uploads newer than this
   max_source_hours: 30        # skip VODs longer than this (marathons are long)
   clips_per_source: 4         # best N moments per VOD
   long_cut_s: 68              # TikTok cut (must be >60s for Creator Rewards)

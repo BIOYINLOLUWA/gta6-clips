@@ -23,7 +23,7 @@ def _ydl(opts: dict):
 def list_recent(src: settings.Source, lookback_hours: int) -> list[dict]:
     """Return recent entries (url, title, description, duration) for a channel/VOD page."""
     cutoff = settings.now_utc() - timedelta(hours=lookback_hours)
-    with _ydl({"extract_flat": "in_playlist", "playlistend": 15}) as y:
+    with _ydl({"extract_flat": "in_playlist", "playlistend": 4}) as y:
         info = y.extract_info(src.url, download=False)
     entries = info.get("entries") or [info]
     out = []

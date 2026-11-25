@@ -7,7 +7,7 @@ on:
     inputs:
       max_sources:
         description: "Max sources to process this run"
-        default: "3"
+        default: "2"
 
 concurrency: { group: clip-produce-pc, cancel-in-progress: false }
 
@@ -37,5 +37,5 @@ jobs:
           Invoke-WebRequest -UseBasicParsing -Uri "https://github.com/google/fonts/raw/main/ofl/bebasneue/BebasNeue-Regular.ttf" -OutFile "fonts\BebasNeue-Regular.ttf"
       - name: Produce clips
         run: |
-          & "..\..\.clipvenv\Scripts\python.exe" -m pipeline.cli produce --max-sources ${{ inputs.max_sources || '3' }}
+          & "..\..\.clipvenv\Scripts\python.exe" -m pipeline.cli produce --max-sources ${{ inputs.max_sources || '2' }}
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }

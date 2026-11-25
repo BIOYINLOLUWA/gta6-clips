@@ -54,12 +54,16 @@ def process_source(src: dict, wl: settings.Watchlist) -> int:
 
 def produce(max_sources: int) -> None:
     wl = settings.load_watchlist()
+    # Only fresh streams: retire anything found more than a day ago that never got processed,
+    # and only retry failures from the last 12 hours.
+    db.q("UPDATE clip_sources SET status='stale', block_reason='older than 24h, skipped' "
+         "WHERE status='new' AND discovered_at < now() - interval '24 hours'")
     db.q("UPDATE clip_sources SET status='new', block_reason=NULL "
-         "WHERE status='failed' AND discovered_at > now() - interval '3 days'")
+         "WHERE status='failed' AND discovered_at > now() - interval '12 hours'")
     queued = source.discover(wl)
     log.info("%d new sources allowed", queued)
     total = 0
-    for src in db.q("SELECT * FROM clip_sources WHERE status='new' ORDER BY discovered_at LIMIT %s",
+    for src in db.q("SELECT * FROM clip_sources WHERE status='new' ORDER BY discovered_at DESC LIMIT %s",
                     (max_sources,)):
         total += process_source(src, wl)
     if total:
