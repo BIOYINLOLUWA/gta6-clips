@@ -68,10 +68,13 @@ def send_for_review(clip_id: int, long_path: Path, short_path: Path) -> None:
         msg = _call("sendVideo", files={"video": f}, chat_id=settings.TELEGRAM_CHAT_ID,
                     caption=review_text(clip, source), reply_markup=keyboard(clip_id),
                     supports_streaming=True)
-    with open(short_path, "rb") as f:
-        short = _call("sendVideo", files={"video": f}, chat_id=settings.TELEGRAM_CHAT_ID,
-                      caption=f"Shorts/Reels cut for #{clip_id}", disable_notification=True,
-                      reply_parameters={"message_id": msg["message_id"]})
+    if Path(short_path) == Path(long_path):  # one cut fits every platform
+        short = msg
+    else:
+        with open(short_path, "rb") as f:
+            short = _call("sendVideo", files={"video": f}, chat_id=settings.TELEGRAM_CHAT_ID,
+                          caption=f"Shorts/Reels cut for #{clip_id}", disable_notification=True,
+                          reply_parameters={"message_id": msg["message_id"]})
     db.q("UPDATE clips SET tg_long_file_id=%s, tg_short_file_id=%s, tg_message_id=%s, "
          "status='pending_review' WHERE id=%s",
          (msg["video"]["file_id"], short["video"]["file_id"], msg["message_id"], clip_id))

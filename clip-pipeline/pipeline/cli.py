@@ -11,7 +11,7 @@ import argparse
 import logging
 import shutil
 
-from . import approve, db, detect, post, render, settings, source
+from . import approve, chat, db, detect, post, render, settings, source
 
 log = logging.getLogger("pipeline")
 
@@ -26,18 +26,22 @@ def process_source(src: dict, wl: settings.Watchlist) -> int:
     work = settings.WORK_DIR / f"src_{src['id']}"
     try:
         audio = source.download_audio(src["url"], work)
+        msgs = chat.fetch(src["url"], work)
         moments = detect.find_moments(audio, src["channel"], src["title"], src["campaign"],
-                                      wl.long_cut_s, wl.clips_per_source)
+                                      wl.long_cut_s, wl.clips_per_source, msgs)
         made = 0
         for i, m in enumerate(moments):
             section = source.download_section(src["url"], m.start, m.end, work, f"sec{i}")
             words = detect.transcribe(section, words=True)
             long_v, short_v = render.render_pair(section, words, "", src["layout"],
                                                  wl.long_cut_s, wl.short_cut_s, work, f"clip{i}")
+            # Claude's hook goes on the first line of each caption: it becomes the on-screen text at post time
+            caps = [f"{m.hook}\n{cap}" if m.hook and m.hook.lower() not in cap.lower() else cap
+                    for cap in m.captions]
             row = db.one(
                 "INSERT INTO clips(source_id, start_s, end_s, score, transcript, hook, captions) "
                 "VALUES (%s,%s,%s,%s,%s,%s,%s) RETURNING id",
-                (src["id"], m.start, m.end, m.score, m.transcript, "", db.as_json(m.captions)))
+                (src["id"], m.start, m.end, m.score, m.transcript, "", db.as_json(caps)))
             approve.send_for_review(row["id"], long_v, short_v)
             made += 1
         db.q("UPDATE clip_sources SET status='processed', processed_at=now() WHERE id=%s", (src["id"],))

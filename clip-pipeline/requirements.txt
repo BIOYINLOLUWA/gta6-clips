@@ -4,3 +4,5 @@ psycopg[binary]>=3.2
 requests>=2.32
 PyYAML>=6.0
 pytest>=8.0
+opencv-python-headless>=4.9,<5
+numpy>=1.26

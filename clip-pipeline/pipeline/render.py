@@ -38,7 +38,7 @@ WrapStyle: 0
 [V4+ Styles]
 Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding
 Style: Cap,Bebas Neue,110,&H00FFFFFF,&H00FFFFFF,&H00000000,&H64000000,0,0,0,0,100,100,2,0,1,7,2,2,60,60,520,1
-Style: Hook,Bebas Neue,120,&H0000E5FF,&H0000E5FF,&H00000000,&H64000000,0,0,0,0,100,100,2,0,1,8,3,8,60,60,260,1
+Style: Hook,Bebas Neue,110,&H0000E5FF,&H0000E5FF,&H00000000,&H64000000,0,0,0,0,100,100,2,0,1,8,3,8,60,60,670,1
 
 [Events]
 Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
@@ -58,12 +58,82 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
     return head + "\n".join(lines) + "\n"
 
 
-def video_filter(layout: str, ass_path: Path) -> str:
+CAM_H = 640  # facecam band on top; gameplay fills the 1280px below
+
+
+def find_facecam(src: Path, samples: int = 10) -> tuple[int, int, int, int] | None:
+    try:
+        return _find_facecam(src, samples)
+    except Exception as exc:  # never fail a clip over the layout
+        import logging
+        logging.getLogger(__name__).warning("facecam detection failed: %s", str(exc)[:200])
+        return None
+
+
+def _find_facecam(src: Path, samples: int = 10) -> tuple[int, int, int, int] | None:
+    """Find a webcam overlay: a face that stays in the same place across the clip.
+    Returns (x, y, w, h) of the cam region in source pixels, or None (use the blur layout)."""
+    try:
+        import cv2
+    except Exception:
+        return None
+    cap = cv2.VideoCapture(str(src))
+    n = int(cap.get(cv2.CAP_PROP_FRAME_COUNT) or 0)
+    W0, H0 = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH) or 0), int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT) or 0)
+    if n < samples or not W0 or W0 < H0:
+        cap.release()
+        return None
+    casc = cv2.CascadeClassifier(cv2.data.haarcascades + "haarcascade_frontalface_default.xml")
+    if casc.empty():
+        cap.release()
+        return None
+    hits = []
+    for i in range(samples):
+        cap.set(cv2.CAP_PROP_POS_FRAMES, int(n * (i + 0.5) / samples))
+        ok, frame = cap.read()
+        if not ok:
+            continue
+        gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
+        faces = casc.detectMultiScale(gray, 1.1, 6, minSize=(int(H0 * 0.06), int(H0 * 0.06)))
+        hits += [tuple(int(v) for v in f) for f in faces]
+    cap.release()
+    if not hits:
+        return None
+    # cluster by centre; the facecam is the spot seen in most frames
+    best, best_n = None, 0
+    for (x, y, w, h) in hits:
+        cx, cy = x + w / 2, y + h / 2
+        group = [f for f in hits if abs(f[0] + f[2] / 2 - cx) < w * 0.5 and abs(f[1] + f[3] / 2 - cy) < h * 0.5]
+        if len(group) > best_n:
+            best, best_n = group, len(group)
+    if best_n < samples * 0.5:
+        return None  # face moves around: probably in-game characters, not a webcam
+    x = sorted(f[0] for f in best)[len(best) // 2]
+    y = sorted(f[1] for f in best)[len(best) // 2]
+    w = sorted(f[2] for f in best)[len(best) // 2]
+    h = sorted(f[3] for f in best)[len(best) // 2]
+    if w > W0 * 0.45:
+        return None  # full-screen camera, not an overlay
+    # cam box around the face at the band's aspect ratio (1080:640)
+    bw = min(W0, int(w * 3.0))
+    bh = min(H0, int(bw * CAM_H / W))
+    bx = int(min(max(0, x + w / 2 - bw / 2), W0 - bw))
+    by = int(min(max(0, y + h / 2 - bh * 0.45), H0 - bh))
+    return bx, by, bw, bh
+
+
+def video_filter(layout: str, ass_path: Path, cam: tuple[int, int, int, int] | None = None) -> str:
     ass = str(ass_path).replace("\\", "/").replace(":", r"\:").replace("'", r"\'")
     fonts = str(settings.FONTS_DIR).replace("\\", "/").replace(":", r"\:")
     subs = f"subtitles='{ass}':fontsdir='{fonts}'"
     if layout == "crop":
         return f"scale=-2:{H},crop={W}:{H},setsar=1,{subs}"
+    if cam:
+        x, y, w, h = cam
+        gh = H - CAM_H
+        return (f"split[a][b];[a]crop={w}:{h}:{x}:{y},scale={W}:{CAM_H},setsar=1[cam];"
+                f"[b]scale=-2:{gh},crop={W}:{gh},setsar=1[game];"
+                f"[cam][game]vstack=inputs=2,setsar=1,{subs}")
     return (f"split[a][b];[a]scale={W}:{H}:force_original_aspect_ratio=increase,crop={W}:{H},"
             f"boxblur=20:5[bg];[b]scale={W}:-2[fg];[bg][fg]overlay=(W-w)/2:(H-h)/2,setsar=1,{subs}")
 
@@ -74,7 +144,7 @@ def video_kbps(duration: float, limit_mb: float = TG_LIMIT_MB, audio_kbps: int =
 
 
 def render(src: Path, out: Path, start: float, end: float, words: list[dict], hook: str,
-           layout: str) -> Path:
+           layout: str, cam: tuple[int, int, int, int] | None = None) -> Path:
     ass_path = out.with_suffix(".ass")
     ass_path.write_text(build_ass(words, hook, start, end), encoding="utf-8")
     dur = end - start
@@ -82,7 +152,8 @@ def render(src: Path, out: Path, start: float, end: float, words: list[dict], ho
     for attempt in range(3):
         subprocess.run([
             "ffmpeg", "-y", "-loglevel", "error", "-ss", f"{start:.3f}", "-t", f"{dur:.3f}", "-i", str(src),
-            "-filter_complex", video_filter(layout, ass_path),
+            "-filter_complex", video_filter(layout, ass_path, cam),
+            "-af", "loudnorm=I=-14:TP=-1.5:LRA=11",
             "-c:v", "libx264", "-preset", "veryfast", "-b:v", f"{kbps}k", "-maxrate", f"{kbps}k",
             "-bufsize", f"{kbps * 2}k", "-pix_fmt", "yuv420p", "-r", "30",
             "-c:a", "aac", "-b:a", "128k", "-movflags", "+faststart", str(out)], check=True)
@@ -94,16 +165,19 @@ def render(src: Path, out: Path, start: float, end: float, words: list[dict], ho
 
 def render_pair(section: Path, words: list[dict], hook: str, layout: str,
                 long_s: int, short_s: int, workdir: Path, name: str) -> tuple[Path, Path]:
-    """`section` is the downloaded window (time 0 = window start). Returns (long, short)."""
+    """`section` is the downloaded clip (time 0 = clip start). Returns (long, short); the same file when
+    the clip is short enough for every platform (59s)."""
     probe = subprocess.run(["ffprobe", "-v", "error", "-show_entries", "format=duration",
                             "-of", "csv=p=0", str(section)], capture_output=True, text=True, check=True)
     dur = float(probe.stdout.strip())
-    long_end = min(dur, float(long_s))
-    mid = long_end / 2
-    s0 = max(0.0, mid - short_s / 2)
-    s1 = min(long_end, s0 + short_s)
-    long_out = render(section, workdir / f"{name}_long.mp4", 0.0, long_end, words, hook, layout)
-    short_out = render(section, workdir / f"{name}_short.mp4", s0, s1, words, hook, layout)
+    cam = find_facecam(section) if layout == "blur" else None
+    if cam:
+        import logging
+        logging.getLogger(__name__).info("%s: facecam found at %s, using split layout", name, cam)
+    long_out = render(section, workdir / f"{name}_long.mp4", 0.0, dur, words, hook, layout, cam)
+    if dur <= 59.5:
+        return long_out, long_out
+    short_out = render(section, workdir / f"{name}_short.mp4", 0.0, 59.0, words, hook, layout, cam)
     return long_out, short_out
 
 

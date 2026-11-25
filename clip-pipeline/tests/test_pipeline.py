@@ -115,7 +115,8 @@ def test_render_pair_end_to_end(tmp_path: Path, layout):
                     "-c:v", "libx264", "-preset", "ultrafast", "-c:a", "aac", "-shortest", str(src)], check=True)
     words = [{"start": i * 0.6, "end": i * 0.6 + 0.5, "text": f"word{i}"} for i in range(110)]
     long_v, short_v = render.render_pair(src, words, "No way he did that", layout, 68, 40, tmp_path, "c")
-    for f, want in ((long_v, 68), (short_v, 40)):
+    # 70s section: full cut for TikTok, first 59s for Shorts/Reels
+    for f, want in ((long_v, 70), (short_v, 59)):
         out = subprocess.run(["ffprobe", "-v", "error", "-select_streams", "v:0", "-show_entries",
                               "stream=width,height:format=duration", "-of", "default=nw=1", str(f)],
                              capture_output=True, text=True, check=True).stdout
@@ -135,3 +136,34 @@ def test_loudness_curve_finds_loud_section(tmp_path: Path):
     assert 68 <= len(curve) <= 71
     loudest = max(range(len(curve)), key=curve.__getitem__)
     assert 30 <= loudest <= 41
+
+
+def test_short_clip_is_one_file(tmp_path: Path):
+    src = tmp_path / "s.mp4"
+    subprocess.run(["ffmpeg", "-y", "-loglevel", "error", "-f", "lavfi", "-i", "testsrc2=size=1920x1080:rate=30:duration=8",
+                    "-f", "lavfi", "-i", "sine=duration=8", "-c:v", "libx264", "-preset", "ultrafast",
+                    "-c:a", "aac", "-shortest", str(src)], check=True)
+    a, b = render.render_pair(src, [], "", "blur", 68, 40, tmp_path, "x")
+    assert a == b
+
+
+def test_chat_spike_beats_loudness_only():
+    from pipeline import chat, detect
+    loud = [-30.0] * 900
+    loud[200:205] = [-12.0] * 5          # loud but chat silent
+    msgs = [(float(t), "KEKW LMAO") for t in range(606, 620) for _ in range(6)]
+    msgs += [(float(t), "hi") for t in range(0, 900, 5)]
+    curve = detect.signal_curve(loud, chat.rate_curve(msgs, 900))
+    assert any(abs(p - 603) < 15 for p in detect.candidate_windows(curve, 68, 2))
+
+
+def test_judge_filters_bad_picks():
+    from pipeline import detect
+    cands = {1: {"id": 1, "start": 100.0, "end": 168.0, "peak": 140, "text": "t", "segments": []}}
+    good = {"id": 1, "start": 110, "end": 140, "score": 8, "kind": "fail", "spoiler": False,
+            "hook": "He trusted the bus", "captions": ["a #gta6", "b #gta6", "c #gta6"]}
+    assert detect._valid(good, cands)["end"] == 140
+    assert detect._valid({**good, "score": 5}, cands) is None
+    assert detect._valid({**good, "kind": "cutscene"}, cands) is None
+    assert detect._valid({**good, "spoiler": True}, cands) is None
+    assert detect._valid({**good, "start": 10, "end": 300}, cands)["start"] == 100.0
