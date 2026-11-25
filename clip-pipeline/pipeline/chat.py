@@ -67,6 +67,45 @@ def twitch_chat(video_id: str, budget_s: float = 300, max_pages: int = 2500) -> 
     return out
 
 
+def twitch_viewer_clips(video_id: str) -> list[tuple[float, str]]:
+    """Clips viewers made during this VOD (official Helix API). Each one is an audience vote for that
+    moment, so it is turned into a burst of weighted 'messages' at the clip's position, more for
+    clips with more views. Needs TWITCH_CLIENT_ID / TWITCH_CLIENT_SECRET."""
+    import math
+    import os
+    from datetime import datetime, timedelta
+
+    cid, secret = os.environ.get("TWITCH_CLIENT_ID", ""), os.environ.get("TWITCH_CLIENT_SECRET", "")
+    if not cid or not secret:
+        log.info("twitch viewer clips: no TWITCH_CLIENT_ID/SECRET, skipped")
+        return []
+    tok = requests.post("https://id.twitch.tv/oauth2/token", timeout=20, params={
+        "client_id": cid, "client_secret": secret, "grant_type": "client_credentials"}).json()["access_token"]
+    h = {"Client-Id": cid, "Authorization": f"Bearer {tok}"}
+    v = requests.get("https://api.twitch.tv/helix/videos", params={"id": video_id}, headers=h, timeout=20).json()["data"][0]
+    start = datetime.fromisoformat(v["created_at"].replace("Z", "+00:00"))
+    m = re.findall(r"(\d+)([hms])", v.get("duration", ""))
+    secs = sum(int(n) * {"h": 3600, "m": 60, "s": 1}[u] for n, u in m) or 12 * 3600
+    end = start + timedelta(seconds=secs + 3600)
+    out, cursor = [], None
+    for _ in range(20):
+        params = {"broadcaster_id": v["user_id"], "started_at": start.isoformat().replace("+00:00", "Z"),
+                  "ended_at": end.isoformat().replace("+00:00", "Z"), "first": 100}
+        if cursor:
+            params["after"] = cursor
+        r = requests.get("https://api.twitch.tv/helix/clips", params=params, headers=h, timeout=20).json()
+        for c in r.get("data", []):
+            if c.get("video_id") == video_id and c.get("vod_offset") is not None:
+                t = float(c["vod_offset"]) + float(c.get("duration") or 30) * 0.6
+                votes = 3 + min(int(math.log2(int(c.get("view_count") or 0) + 1) * 3), 45)
+                out += [(t, "CLIPIT " + (c.get("title") or ""))] * votes
+        cursor = (r.get("pagination") or {}).get("cursor")
+        if not cursor:
+            break
+    log.info("twitch viewer clips: %d vote-messages from viewer clips", len(out))
+    return out
+
+
 def youtube_chat(url: str, work: Path) -> list[tuple[float, str]]:
     from .source import _ydl
 
@@ -101,7 +140,12 @@ def fetch(url: str, work: Path) -> list[tuple[float, str]]:
     try:
         vid = twitch_video_id(url)
         if vid:
-            msgs = twitch_chat(vid)
+            msgs = []
+            try:
+                msgs = twitch_chat(vid)  # often refused now ("failed integrity check")
+            except Exception as exc:
+                log.info("twitch chat replay unavailable: %s", str(exc)[:120])
+            msgs += twitch_viewer_clips(vid)
         elif "youtube.com" in url or "youtu.be" in url:
             msgs = youtube_chat(url, work / "chat")
         else:
