@@ -79,6 +79,10 @@ def review() -> None:
     log.info("%d newly approved", len(approved))
     n = post.schedule_approved()
     log.info("%d clips scheduled", n)
+    for r in db.q("SELECT c.id, c.status, c.created_at, c.scheduled_for AS scheduled_at, c.error, s.channel FROM clips c "
+                  "JOIN clip_sources s ON s.id=c.source_id ORDER BY c.id DESC LIMIT 25"):
+        log.info("clip #%s %-14s %-14s made %s sched %s %s", r["id"], r["status"], r["channel"][:14],
+                 str(r["created_at"])[:16], str(r["scheduled_at"])[:16], (r["error"] or "")[:80])
 
 
 def hot() -> None:

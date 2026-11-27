@@ -126,6 +126,7 @@ def poll() -> list[int]:
     offset = int(db.kv_get("tg_offset", "0"))
     updates = _call("getUpdates", offset=offset, timeout=0, allowed_updates=["callback_query", "message"])
     approved = []
+    log.info("telegram: %d updates (offset %s)", len(updates), offset)
     for u in updates:
         offset = max(offset, u["update_id"] + 1)
         msg = u.get("message")
@@ -141,6 +142,7 @@ def poll() -> list[int]:
             continue
         clip = db.one("SELECT status FROM clips WHERE id=%s", (clip_id,))
         if not clip or clip["status"] != "pending_review":
+            log.info("tap on clip %s ignored: status %s", clip_id, clip and clip["status"])
             _safe("answerCallbackQuery", callback_query_id=cq["id"], text="Already handled")
             continue
         if action == "approve":
