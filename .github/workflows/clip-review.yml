@@ -24,4 +24,8 @@ jobs:
       - uses: actions/setup-python@v5
         with: { python-version: "3.12", cache: pip }
       - run: pip install requests PyYAML "psycopg[binary]"
+      - name: ffmpeg and caption font (for the on-screen caption / #AD overlay)
+        run: |
+          sudo apt-get update -qq && sudo apt-get install -y -qq ffmpeg > /dev/null
+          mkdir -p fonts && curl -fsSL -o fonts/BebasNeue-Regular.ttf https://raw.githubusercontent.com/google/fonts/main/ofl/bebasneue/BebasNeue-Regular.ttf || true
       - run: python -m pipeline.cli review
